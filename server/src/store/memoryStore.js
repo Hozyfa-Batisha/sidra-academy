@@ -5,6 +5,8 @@ class MemoryStore {
     this.users = new Map();
     this.teacherProfiles = new Map();
     this.studentProfiles = new Map();
+    this.teacherAvailability = new Map();
+    this.teacherAvailabilityBlocks = new Map();
     this.resetTokens = new Map();
     this.invites = new Map();
   }
@@ -51,6 +53,55 @@ class MemoryStore {
     if (user.role === "teacher") return this.teacherProfiles.get(user.id) || null;
     if (user.role === "student") return this.studentProfiles.get(user.id) || null;
     return null;
+  }
+
+  async replaceTeacherAvailability(teacherId, windows) {
+    for (const [id, window] of this.teacherAvailability) {
+      if (window.teacher_id === teacherId) this.teacherAvailability.delete(id);
+    }
+    const saved = windows.map((window) => {
+      const row = {
+        id: randomUUID(),
+        teacher_id: teacherId,
+        day_of_week: window.dayOfWeek,
+        start_time_local: window.startTimeLocal,
+        end_time_local: window.endTimeLocal,
+      };
+      this.teacherAvailability.set(row.id, row);
+      return row;
+    });
+    return saved;
+  }
+
+  async listTeacherAvailability(teacherId) {
+    return [...this.teacherAvailability.values()]
+      .filter((window) => window.teacher_id === teacherId)
+      .sort((a, b) => a.day_of_week - b.day_of_week || a.start_time_local.localeCompare(b.start_time_local));
+  }
+
+  async addTeacherAvailabilityBlock({ teacherId, blockedDateFrom, blockedDateTo, reason }) {
+    const row = {
+      id: randomUUID(),
+      teacher_id: teacherId,
+      blocked_date_from: blockedDateFrom,
+      blocked_date_to: blockedDateTo,
+      reason: reason || null,
+    };
+    this.teacherAvailabilityBlocks.set(row.id, row);
+    return row;
+  }
+
+  async listTeacherAvailabilityBlocks(teacherId) {
+    return [...this.teacherAvailabilityBlocks.values()]
+      .filter((block) => block.teacher_id === teacherId)
+      .sort((a, b) => a.blocked_date_from.localeCompare(b.blocked_date_from));
+  }
+
+  async deleteTeacherAvailabilityBlock(teacherId, blockId) {
+    const block = this.teacherAvailabilityBlocks.get(blockId);
+    if (!block || block.teacher_id !== teacherId) return false;
+    this.teacherAvailabilityBlocks.delete(blockId);
+    return true;
   }
 
   async saveResetToken({ userId, tokenHash, expiresAt }) {

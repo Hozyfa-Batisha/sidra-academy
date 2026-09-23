@@ -15,6 +15,8 @@ const config = require("./config");
 
 const validRoles = new Set(["admin", "teacher", "student"]);
 const validLevels = new Set(["beginner", "intermediate", "advanced"]);
+const timePattern = /^([01]\d|2[0-3]):[0-5]\d$/;
+const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 
 function publicUser(user, profile = null) {
   return {
@@ -30,6 +32,28 @@ function publicUser(user, profile = null) {
 
 function validatePassword(password) {
   return typeof password === "string" && password.length >= 10;
+}
+
+function normalizeAvailabilityWindows(windows) {
+  if (!Array.isArray(windows)) throw new Error("Availability windows must be an array");
+  return windows.map((window) => {
+    const dayOfWeek = Number(window.dayOfWeek);
+    const startTimeLocal = window.startTimeLocal;
+    const endTimeLocal = window.endTimeLocal;
+    if (!Number.isInteger(dayOfWeek) || dayOfWeek < 0 || dayOfWeek > 6) {
+      throw new Error("dayOfWeek must be an integer from 0 (Sunday) to 6 (Saturday)");
+    }
+    if (!timePattern.test(startTimeLocal) || !timePattern.test(endTimeLocal) || startTimeLocal >= endTimeLocal) {
+      throw new Error("Availability times must be valid local HH:MM values with start before end");
+    }
+    return { dayOfWeek, startTimeLocal, endTimeLocal };
+  });
+}
+
+function validateDateRange(blockedDateFrom, blockedDateTo) {
+  if (!datePattern.test(blockedDateFrom) || !datePattern.test(blockedDateTo) || blockedDateFrom > blockedDateTo) {
+    throw new Error("Blocked dates must be valid YYYY-MM-DD values with the start on or before the end");
+  }
 }
 
 function setRefreshCookie(res, user) {
@@ -160,6 +184,53 @@ function createApp({ store, seed = true } = {}) {
       if (error.code === "DUPLICATE_EMAIL") return res.status(409).json({ error: "Email is already in use" });
       throw error;
     }
+  });
+
+  app.get("/teacher/availability", auth, requireRole("teacher"), async (req, res) => {
+    const profile = await store.getProfile(req.user);
+    res.json({
+      timezone: profile?.timezone || "UTC",
+      windows: await store.listTeacherAvailability(req.user.id),
+      blocks: await store.listTeacherAvailabilityBlocks(req.user.id),
+    });
+  });
+
+  app.put("/teacher/availability", auth, requireRole("teacher"), async (req, res) => {
+    try {
+      const windows = normalizeAvailabilityWindows(req.body?.windows);
+      const byDay = new Set();
+      for (const window of windows) {
+        const key = `${window.dayOfWeek}:${window.startTimeLocal}:${window.endTimeLocal}`;
+        if (byDay.has(key)) throw new Error("Duplicate availability windows are not allowed");
+        byDay.add(key);
+      }
+      const saved = await store.replaceTeacherAvailability(req.user.id, windows);
+      const profile = await store.getProfile(req.user);
+      return res.json({ timezone: profile?.timezone || "UTC", windows: saved });
+    } catch (error) {
+      return res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.post("/teacher/availability/blocks", auth, requireRole("teacher"), async (req, res) => {
+    const { blockedDateFrom, blockedDateTo, reason } = req.body || {};
+    try {
+      validateDateRange(blockedDateFrom, blockedDateTo);
+      const block = await store.addTeacherAvailabilityBlock({
+        teacherId: req.user.id,
+        blockedDateFrom,
+        blockedDateTo,
+        reason: typeof reason === "string" ? reason.trim().slice(0, 255) : null,
+      });
+      return res.status(201).json({ block });
+    } catch (error) {
+      return res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.delete("/teacher/availability/blocks/:id", auth, requireRole("teacher"), async (req, res) => {
+    const deleted = await store.deleteTeacherAvailabilityBlock(req.user.id, req.params.id);
+    return deleted ? res.status(204).end() : res.status(404).json({ error: "Availability block not found" });
   });
 
   const dashboards = {

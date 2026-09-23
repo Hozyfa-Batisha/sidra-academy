@@ -64,6 +64,61 @@ class MysqlStore {
     return null;
   }
 
+  async replaceTeacherAvailability(teacherId, windows) {
+    const connection = await this.pool.getConnection();
+    try {
+      await connection.beginTransaction();
+      await connection.execute("DELETE FROM teacher_availability WHERE teacher_id = ?", [teacherId]);
+      for (const window of windows) {
+        await connection.execute(
+          "INSERT INTO teacher_availability (id, teacher_id, day_of_week, start_time_local, end_time_local) VALUES (?, ?, ?, ?, ?)",
+          [randomUUID(), teacherId, window.dayOfWeek, window.startTimeLocal, window.endTimeLocal],
+        );
+      }
+      await connection.commit();
+      return this.listTeacherAvailability(teacherId);
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async listTeacherAvailability(teacherId) {
+    const [rows] = await this.pool.execute(
+      "SELECT id, teacher_id, day_of_week, TIME_FORMAT(start_time_local, '%H:%i') AS start_time_local, TIME_FORMAT(end_time_local, '%H:%i') AS end_time_local FROM teacher_availability WHERE teacher_id = ? ORDER BY day_of_week, start_time_local",
+      [teacherId],
+    );
+    return rows;
+  }
+
+  async addTeacherAvailabilityBlock({ teacherId, blockedDateFrom, blockedDateTo, reason }) {
+    const id = randomUUID();
+    await this.pool.execute(
+      "INSERT INTO teacher_availability_blocks (id, teacher_id, blocked_date_from, blocked_date_to, reason) VALUES (?, ?, ?, ?, ?)",
+      [id, teacherId, blockedDateFrom, blockedDateTo, reason || null],
+    );
+    const [rows] = await this.pool.execute("SELECT * FROM teacher_availability_blocks WHERE id = ?", [id]);
+    return rows[0];
+  }
+
+  async listTeacherAvailabilityBlocks(teacherId) {
+    const [rows] = await this.pool.execute(
+      "SELECT id, teacher_id, DATE_FORMAT(blocked_date_from, '%Y-%m-%d') AS blocked_date_from, DATE_FORMAT(blocked_date_to, '%Y-%m-%d') AS blocked_date_to, reason FROM teacher_availability_blocks WHERE teacher_id = ? ORDER BY blocked_date_from",
+      [teacherId],
+    );
+    return rows;
+  }
+
+  async deleteTeacherAvailabilityBlock(teacherId, blockId) {
+    const [result] = await this.pool.execute(
+      "DELETE FROM teacher_availability_blocks WHERE id = ? AND teacher_id = ?",
+      [blockId, teacherId],
+    );
+    return result.affectedRows === 1;
+  }
+
   async saveResetToken({ userId, tokenHash, expiresAt }) {
     await this.pool.execute(
       "INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)",

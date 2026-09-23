@@ -36,6 +36,32 @@ CREATE TABLE IF NOT EXISTS student_profiles (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS teacher_availability (
+  id CHAR(36) PRIMARY KEY,
+  teacher_id CHAR(36) NOT NULL,
+  day_of_week TINYINT UNSIGNED NOT NULL,
+  start_time_local TIME NOT NULL,
+  end_time_local TIME NOT NULL,
+  CONSTRAINT fk_teacher_availability_user
+    FOREIGN KEY (teacher_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT chk_teacher_availability_day CHECK (day_of_week BETWEEN 0 AND 6),
+  CONSTRAINT chk_teacher_availability_order CHECK (start_time_local < end_time_local),
+  UNIQUE KEY uq_teacher_availability_window (teacher_id, day_of_week, start_time_local, end_time_local),
+  INDEX idx_teacher_availability_lookup (teacher_id, day_of_week)
+);
+
+CREATE TABLE IF NOT EXISTS teacher_availability_blocks (
+  id CHAR(36) PRIMARY KEY,
+  teacher_id CHAR(36) NOT NULL,
+  blocked_date_from DATE NOT NULL,
+  blocked_date_to DATE NOT NULL,
+  reason VARCHAR(255) NULL,
+  CONSTRAINT fk_teacher_availability_block_user
+    FOREIGN KEY (teacher_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT chk_teacher_availability_block_order CHECK (blocked_date_from <= blocked_date_to),
+  INDEX idx_teacher_availability_blocks_lookup (teacher_id, blocked_date_from, blocked_date_to)
+);
+
 CREATE TABLE IF NOT EXISTS password_reset_tokens (
   id CHAR(36) PRIMARY KEY,
   user_id CHAR(36) NOT NULL,
