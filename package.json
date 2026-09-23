@@ -1,0 +1,29 @@
+{
+  "name": "sidra-academy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Sidra Academy Phase 1 foundation",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "node --watch server/src/server.js",
+    "dev:client": "npm --prefix client run dev",
+    "start": "node server/src/server.js",
+    "build": "npm --prefix client run build",
+    "test": "node --test server/test/*.test.js",
+    "test:coverage": "node --test --experimental-test-coverage server/test/*.test.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "ioredis": "^5.6.1",
+    "jsonwebtoken": "^9.0.2",
+    "mysql2": "^3.14.3",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "supertest": "^7.1.1"
+  }
+}
