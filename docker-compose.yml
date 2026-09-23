@@ -1,0 +1,61 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: mysql://sidra:sidra_password@mysql:3306/sidra_academy
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:-replace-this-in-production}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-replace-this-refresh-secret-in-production}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    expose:
+      - "4000"
+
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    expose:
+      - "80"
+
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: sidra_academy
+      MYSQL_USER: sidra
+      MYSQL_PASSWORD: sidra_password
+      MYSQL_ROOT_PASSWORD: root_password_change_me
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./server/schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "sidra", "-psidra_password"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+
+  nginx:
+    image: nginx:1.27-alpine
+    depends_on:
+      - app
+      - frontend
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+
+volumes:
+  mysql_data:
+  redis_data:
