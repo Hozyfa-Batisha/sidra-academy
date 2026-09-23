@@ -54,4 +54,21 @@ input:focus, select:focus { border-color: #0f766e; box-shadow: 0 0 0 3px #0f766e
 .invite-form .button, .invite-form .error { grid-column: 1 / -1; }
 .invite-result { display: grid; gap: 8px; margin-top: 22px; padding: 16px; color: #31574f; background: #edf9f1; border: 1px solid #c9e8d7; border-radius: 12px; font-size: 13px; }
 code { padding: 2px 5px; color: #0f5d58; background: white; border-radius: 4px; }
+.availability-panel { padding: 28px; }
+.availability-note { max-width: 700px; margin: 12px 0 22px; font-size: 14px; }
+.timezone-pill { padding: 7px 10px; color: #0f766e; background: #e6f3ed; border-radius: 20px; font-family: monospace; font-size: 12px; }
+.weekly-grid { display: grid; gap: 8px; margin-bottom: 18px; }
+.day-row { display: grid; grid-template-columns: minmax(130px, 1fr) 120px 26px 120px; align-items: center; gap: 10px; padding: 10px; background: #f8fbf9; border-radius: 10px; }
+.day-toggle { display: flex; grid-template-columns: none; align-items: center; gap: 9px; }
+.day-toggle input { width: 16px; height: 16px; accent-color: #0f766e; }
+.day-toggle span { color: #31574f; font-weight: 600; }
+.time-separator { color: #94aaa3; font-size: 12px; text-align: center; }
+.blocks-section { margin-top: 30px; padding-top: 25px; border-top: 1px solid #e2ebe6; }
+.blocks-section h3 { margin: 0; color: #31574f; font-size: 18px; }
+.block-form { display: grid; grid-template-columns: 1fr 1fr 1.4fr auto; align-items: end; gap: 12px; margin-top: 18px; }
+.block-form .button { height: 45px; white-space: nowrap; }
+.block-list { display: grid; gap: 8px; margin-top: 18px; }
+.block-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 13px; color: #41615c; background: #fbf5ea; border: 1px solid #efe2c7; border-radius: 9px; font-size: 13px; }
+.block-item .link-button { color: #a36b35; font-size: 12px; }
 @media (max-width: 760px) { .auth-layout { grid-template-columns: 1fr; } .auth-intro { min-height: 380px; padding: 28px; } .intro-copy { margin: 60px 0 20px; } .auth-intro h1 { font-size: 44px; } .auth-card-wrap { padding: 22px; } .topbar { padding: 17px 5vw; } .topbar .brand { font-size: 14px; } .user-menu > span:first-child { display: none; } .dashboard { padding: 48px 0; } .invite-form { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { .availability-panel { padding: 20px; } .day-row { grid-template-columns: 1fr 100px 18px 100px; gap: 6px; } .block-form { grid-template-columns: 1fr 1fr; } .block-form label:nth-child(3), .block-form .button { grid-column: 1 / -1; } .section-heading { align-items: flex-start; } }

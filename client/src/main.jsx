@@ -92,6 +92,78 @@ function ResetRequired({ user, onComplete, onLogout }) {
   </form></main>;
 }
 
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+function AvailabilityPanel() {
+  const [timezone, setTimezone] = useState("UTC");
+  const [days, setDays] = useState(WEEKDAYS.map((name, dayOfWeek) => ({ name, dayOfWeek, enabled: false, startTimeLocal: "09:00", endTimeLocal: "12:00" })));
+  const [blocks, setBlocks] = useState([]);
+  const [blockForm, setBlockForm] = useState({ blockedDateFrom: "", blockedDateTo: "", reason: "" });
+  const [status, setStatus] = useState("");
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api("/teacher/availability").then((result) => {
+      setTimezone(result.timezone);
+      setBlocks(result.blocks || []);
+      setDays((current) => current.map((day) => {
+        const saved = (result.windows || []).find((window) => Number(window.day_of_week) === day.dayOfWeek);
+        return saved ? { ...day, enabled: true, startTimeLocal: saved.start_time_local, endTimeLocal: saved.end_time_local } : day;
+      }));
+    }).catch((err) => setError(err.message));
+  }, []);
+
+  const updateDay = (dayOfWeek, changes) => setDays((current) => current.map((day) => day.dayOfWeek === dayOfWeek ? { ...day, ...changes } : day));
+  const saveAvailability = async (event) => {
+    event.preventDefault(); setSaving(true); setError(""); setStatus("");
+    try {
+      const result = await api("/teacher/availability", {
+        method: "PUT",
+        body: JSON.stringify({ windows: days.filter((day) => day.enabled).map(({ dayOfWeek, startTimeLocal, endTimeLocal }) => ({ dayOfWeek, startTimeLocal, endTimeLocal })) }),
+      });
+      setTimezone(result.timezone); setStatus("Weekly availability saved in local time.");
+    } catch (err) { setError(err.message); } finally { setSaving(false); }
+  };
+  const addBlock = async (event) => {
+    event.preventDefault(); setError(""); setStatus("");
+    try {
+      const result = await api("/teacher/availability/blocks", { method: "POST", body: JSON.stringify(blockForm) });
+      setBlocks((current) => [...current, result.block].sort((a, b) => a.blocked_date_from.localeCompare(b.blocked_date_from)));
+      setBlockForm({ blockedDateFrom: "", blockedDateTo: "", reason: "" }); setStatus("Date block added.");
+    } catch (err) { setError(err.message); }
+  };
+  const removeBlock = async (id) => {
+    try { await api(`/teacher/availability/blocks/${id}`, { method: "DELETE" }); setBlocks((current) => current.filter((block) => block.id !== id)); }
+    catch (err) { setError(err.message); }
+  };
+
+  return <section className="card availability-panel">
+    <div className="section-heading"><div><p className="eyebrow">Teacher availability</p><h2>When students can book you</h2></div><span className="timezone-pill">{timezone}</span></div>
+    <p className="muted availability-note">These recurring windows stay in your local timezone. The system will resolve the correct UTC instant later for each scheduled date.</p>
+    <form onSubmit={saveAvailability} className="availability-form">
+      <div className="weekly-grid">{days.map((day) => <div className="day-row" key={day.dayOfWeek}>
+        <label className="day-toggle"><input type="checkbox" checked={day.enabled} onChange={(e) => updateDay(day.dayOfWeek, { enabled: e.target.checked })} /><span>{day.name}</span></label>
+        <input aria-label={`${day.name} start time`} type="time" value={day.startTimeLocal} disabled={!day.enabled} onChange={(e) => updateDay(day.dayOfWeek, { startTimeLocal: e.target.value })} />
+        <span className="time-separator">to</span>
+        <input aria-label={`${day.name} end time`} type="time" value={day.endTimeLocal} disabled={!day.enabled} onChange={(e) => updateDay(day.dayOfWeek, { endTimeLocal: e.target.value })} />
+      </div>)}</div>
+      {error && <p className="error">{error}</p>}{status && <p className="success">{status}</p>}
+      <button className="button primary" disabled={saving}>{saving ? "Saving…" : "Save weekly availability"}</button>
+    </form>
+    <div className="blocks-section"><div><p className="eyebrow">Date blocks</p><h3>Time away or unavailable</h3></div>
+      <form className="block-form" onSubmit={addBlock}>
+        <label>From<input type="date" required value={blockForm.blockedDateFrom} onChange={(e) => setBlockForm({ ...blockForm, blockedDateFrom: e.target.value })} /></label>
+        <label>To<input type="date" required value={blockForm.blockedDateTo} onChange={(e) => setBlockForm({ ...blockForm, blockedDateTo: e.target.value })} /></label>
+        <label>Reason<input value={blockForm.reason} maxLength="255" placeholder="Optional" onChange={(e) => setBlockForm({ ...blockForm, reason: e.target.value })} /></label>
+        <button className="button secondary">Block dates</button>
+      </form>
+      {blocks.length > 0 && <div className="block-list">{blocks.map((block) => <div className="block-item" key={block.id}><span><strong>{block.blocked_date_from}</strong> → <strong>{block.blocked_date_to}</strong>{block.reason && ` · ${block.reason}`}</span><button className="link-button" type="button" onClick={() => removeBlock(block.id)}>Remove</button></div>)}</div>}
+      {blocks.length === 0 && <p className="muted">No blocked dates yet.</p>}
+    </div>
+  </section>;
+}
+
 function Dashboard({ user, onLogout }) {
   const [invite, setInvite] = useState({ role: "student", name: "", email: "", timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", level: "beginner" });
   const [inviteResult, setInviteResult] = useState(null);
@@ -118,6 +190,7 @@ function Dashboard({ user, onLogout }) {
     <section className="dashboard">
       <p className="eyebrow">{user.role} dashboard</p><h1>{title}</h1><p className="lead">{subtitle}</p>
       <div className="empty-panel"><div className="empty-icon">✦</div><h2>{dashboard?.empty ? "Nothing here yet" : "Loading your dashboard…"}</h2><p>This dashboard is ready for the next phase of Sidra Academy.</p></div>
+      {user.role === "teacher" && <AvailabilityPanel />}
       {user.role === "admin" && <section className="card admin-tools">
         <div className="section-heading"><div><p className="eyebrow">Account access</p><h2>Invite a team member or student</h2></div><button className="button secondary" onClick={() => setOpenInvite(!openInvite)}>{openInvite ? "Close" : "Create invite"}</button></div>
         {openInvite && <form className="invite-form" onSubmit={submitInvite}>
