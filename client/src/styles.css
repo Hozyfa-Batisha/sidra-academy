@@ -70,5 +70,40 @@ code { padding: 2px 5px; color: #0f5d58; background: white; border-radius: 4px; 
 .block-list { display: grid; gap: 8px; margin-top: 18px; }
 .block-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 13px; color: #41615c; background: #fbf5ea; border: 1px solid #efe2c7; border-radius: 9px; font-size: 13px; }
 .block-item .link-button { color: #a36b35; font-size: 12px; }
+.schedule-calendar { margin: 0 0 26px; padding: 27px; }
+.calendar-nav { display: flex; gap: 8px; }
+.calendar-nav .button { min-width: 40px; padding: 8px; font-size: 20px; line-height: 1; }
+.calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); margin-top: 22px; border-top: 1px solid #e2ebe6; border-left: 1px solid #e2ebe6; }
+.calendar-weekday { padding: 9px 6px; color: #6d8580; background: #f8fbf9; border-right: 1px solid #e2ebe6; border-bottom: 1px solid #e2ebe6; font-size: 11px; font-weight: 700; text-align: center; text-transform: uppercase; }
+.calendar-day { min-height: 112px; padding: 7px; border-right: 1px solid #e2ebe6; border-bottom: 1px solid #e2ebe6; }
+.calendar-day-empty { background: #fbfdfb; }
+.calendar-date { display: block; margin: 0 0 5px 2px; color: #6d8580; font-size: 12px; }
+.slot-card { display: grid; gap: 3px; margin-bottom: 5px; padding: 7px; background: #eaf5ef; border-left: 3px solid #0f766e; border-radius: 6px; color: #31574f; font-size: 10px; }
+.slot-card strong { font-size: 11px; }
+.slot-card small { color: #617b74; font-size: 9px; line-height: 1.4; }
+.slot-status { text-transform: capitalize; }
+.slot-no_show_unexcused, .slot-needs_reassignment, .slot-pending_review { background: #fff2e5; border-color: #c57927; }
+.slot-excused_absence { background: #edf0fa; border-color: #6474b5; }
+.slot-cancelled { background: #f4f5f4; border-color: #a7b4af; }
+.attendance-actions, .override-controls { display: grid; gap: 4px; margin-top: 4px; }
+.attendance-actions { grid-template-columns: 1fr 1fr; }
+.attendance-actions button, .override-controls button { padding: 5px 3px; color: white; background: #0f766e; border: 0; border-radius: 5px; font-size: 9px; }
+.attendance-actions button:last-child { background: #b9683c; }
+.override-controls select, .override-controls input { padding: 5px; border-radius: 5px; font-size: 9px; }
+.override-controls button { background: #5e6a9b; }
+.calendar-error { margin-top: 18px; }
+.no-slots { margin-bottom: 0; text-align: center; }
+.schedule-builder { margin-top: 24px; }
+.schedule-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 22px; }
+.schedule-form .button, .schedule-form .error, .schedule-form .success, .schedule-form .weekday-picker, .schedule-form .availability-feedback, .schedule-form .notice { grid-column: 1 / -1; }
+.weekday-picker { display: flex; flex-wrap: wrap; gap: 10px 16px; margin: 0; padding: 13px; border: 1px solid #d8e5df; border-radius: 10px; }
+.weekday-picker legend { padding: 0 6px; color: #41615c; font-size: 13px; font-weight: 600; }
+.weekday-picker label { display: flex; align-items: center; gap: 5px; }
+.weekday-picker input { width: 15px; height: 15px; accent-color: #0f766e; }
+.availability-feedback, .notice { display: grid; gap: 4px; padding: 13px; border-radius: 10px; font-size: 13px; }
+.availability-feedback span, .availability-feedback small { color: #53716a; }
+.feedback-good { background: #edf9f1; border: 1px solid #c9e8d7; }
+.feedback-warning, .notice { background: #fff6e9; border: 1px solid #f0dfbe; color: #895d26; }
 @media (max-width: 760px) { .auth-layout { grid-template-columns: 1fr; } .auth-intro { min-height: 380px; padding: 28px; } .intro-copy { margin: 60px 0 20px; } .auth-intro h1 { font-size: 44px; } .auth-card-wrap { padding: 22px; } .topbar { padding: 17px 5vw; } .topbar .brand { font-size: 14px; } .user-menu > span:first-child { display: none; } .dashboard { padding: 48px 0; } .invite-form { grid-template-columns: 1fr; } }
 @media (max-width: 760px) { .availability-panel { padding: 20px; } .day-row { grid-template-columns: 1fr 100px 18px 100px; gap: 6px; } .block-form { grid-template-columns: 1fr 1fr; } .block-form label:nth-child(3), .block-form .button { grid-column: 1 / -1; } .section-heading { align-items: flex-start; } }
+@media (max-width: 760px) { .schedule-calendar { padding: 16px; overflow-x: auto; } .calendar-grid { min-width: 770px; } .schedule-form { grid-template-columns: 1fr; } .schedule-form > * { grid-column: 1 / -1; } .calendar-day { min-height: 90px; } }
