@@ -61,7 +61,7 @@ function utcInstantForLocal(date, time, timeZone) {
   return instant;
 }
 
-test("each role logs in and lands on its own dashboard", async () => {
+test("each role logs in and lands on its own dashboard shell", async () => {
   const { app } = await fixture();
   for (const role of ["admin", "teacher", "student"]) {
     const token = await login(app, `${role}@sidra.test`, `${role[0].toUpperCase()}${role.slice(1)}Password123!`);
@@ -70,7 +70,7 @@ test("each role logs in and lands on its own dashboard", async () => {
       .set("Authorization", `Bearer ${token}`);
     assert.equal(response.status, 200);
     assert.equal(response.body.role, role);
-    assert.equal(response.body.empty, true);
+    assert.equal(response.body.empty, false);
   }
 });
 

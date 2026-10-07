@@ -12,6 +12,16 @@ const {
 } = require("./security");
 const { authRequired, requireRole } = require("./authMiddleware");
 const config = require("./config");
+const { DateTime } = require("luxon");
+const {
+  buildWeeklyRule,
+  expandSchedule,
+  parseLocalDateTime,
+  toUtcInstant,
+  withinAvailability,
+  dateBlocked,
+  WEEKDAY_CODES,
+} = require("./scheduling");
 
 const validRoles = new Set(["admin", "teacher", "student"]);
 const validLevels = new Set(["beginner", "intermediate", "advanced"]);
@@ -56,6 +66,27 @@ function validateDateRange(blockedDateFrom, blockedDateTo) {
   }
 }
 
+function calendarBounds({ from, to, timezone }) {
+  const start = from || DateTime.now().setZone(timezone).minus({ days: 30 }).toFormat("yyyy-MM-dd");
+  const end = to || DateTime.now().setZone(timezone).plus({ days: 90 }).toFormat("yyyy-MM-dd");
+  const startDate = DateTime.fromISO(start, { zone: timezone });
+  const endDate = DateTime.fromISO(end, { zone: timezone });
+  if (!startDate.isValid || !endDate.isValid || startDate.toFormat("yyyy-MM-dd") !== start || endDate.toFormat("yyyy-MM-dd") !== end || start > end) {
+    throw new Error("Schedule dates must be valid YYYY-MM-DD values with start on or before end");
+  }
+  return {
+    fromUtc: startDate.startOf("day").toUTC().toJSDate(),
+    toUtc: endDate.endOf("day").toUTC().toJSDate(),
+  };
+}
+
+function requestError(res, error) {
+  if (error.code === "DUPLICATE_SLOT") return res.status(409).json({ error: "This teacher is already booked at one or more of those times" });
+  if (error.code === "FORBIDDEN") return res.status(403).json({ error: error.message });
+  if (error.code === "MARK_WINDOW_CLOSED") return res.status(409).json({ error: error.message });
+  return res.status(400).json({ error: error.message || "Invalid request" });
+}
+
 function setRefreshCookie(res, user) {
   res.cookie("sidra_refresh", issueRefreshToken(user), {
     httpOnly: true,
@@ -66,7 +97,7 @@ function setRefreshCookie(res, user) {
   });
 }
 
-function createApp({ store, seed = true } = {}) {
+function createApp({ store, seed = true, clock = () => new Date() } = {}) {
   if (!store) throw new Error("createApp requires a store");
   const app = express();
   app.use(cors({ origin: true, credentials: true }));
@@ -233,6 +264,151 @@ function createApp({ store, seed = true } = {}) {
     return deleted ? res.status(204).end() : res.status(404).json({ error: "Availability block not found" });
   });
 
+  app.get("/admin/scheduling/options", auth, requireRole("admin"), async (_req, res) => {
+    const [teachers, students, courses] = await Promise.all([
+      store.listAccountsByRole("teacher"),
+      store.listAccountsByRole("student"),
+      store.listCourses(),
+    ]);
+    const enrichedTeachers = await Promise.all(teachers.map(async (teacher) => {
+      const profile = await store.getTeacherSchedulingProfile(teacher.id);
+      return { ...teacher, timezone: profile?.timezone || teacher.timezone, availability: profile?.availability || [], blocks: profile?.blocks || [] };
+    }));
+    res.json({ teachers: enrichedTeachers, students, courses });
+  });
+
+  app.post("/admin/classes", auth, requireRole("admin"), async (req, res) => {
+    try {
+      const { teacherId, studentId, courseId, startDate, startTime, durationMinutes = 60, daysOfWeek } = req.body || {};
+      if (!teacherId || !studentId || !courseId) throw new Error("Teacher, student, and course are required");
+      if (!Number.isInteger(Number(durationMinutes)) || Number(durationMinutes) < 15 || Number(durationMinutes) > 180) {
+        throw new Error("Class duration must be a whole number from 15 to 180 minutes");
+      }
+      const normalizedDays = Array.isArray(daysOfWeek) ? [...new Set(daysOfWeek.map(Number))].sort((a, b) => a - b) : [];
+      const recurringRule = buildWeeklyRule({ startDate, startTime, daysOfWeek: normalizedDays });
+      const [teacher, student, course, profile] = await Promise.all([
+        store.findUserById(teacherId),
+        store.findUserById(studentId),
+        store.findCourseById(courseId),
+        store.getTeacherSchedulingProfile(teacherId),
+      ]);
+      if (!teacher || teacher.role !== "teacher" || teacher.status !== "active" || !profile) throw new Error("Select an active teacher");
+      if (!student || student.role !== "student" || student.status !== "active") throw new Error("Select an active student");
+      if (!course) throw new Error("Select a valid course");
+      const duration = Number(durationMinutes);
+      for (const weekday of normalizedDays) {
+        if (!withinAvailability(profile.availability, weekday, startTime, duration)) {
+          throw new Error(`The selected time is outside ${WEEKDAY_CODES[weekday]} availability in ${profile.timezone}`);
+        }
+      }
+      const localStart = parseLocalDateTime(startDate, startTime);
+      const startInstant = toUtcInstant(localStart, profile.timezone);
+      if (!startInstant) throw new Error("That local time does not exist because of a daylight-saving transition");
+      const now = clock();
+      if (startInstant <= now || startInstant > new Date(now.getTime() + 56 * 24 * 60 * 60 * 1000)) {
+        throw new Error("Choose a first class date within the next 8 weeks");
+      }
+      if (dateBlocked(profile.blocks, startDate)) throw new Error("The teacher has blocked this date");
+      const slots = expandSchedule({
+        ruleText: recurringRule,
+        timezone: profile.timezone,
+        availability: profile.availability,
+        blocks: profile.blocks,
+        durationMinutes: duration,
+        now,
+      });
+      if (!slots.length) throw new Error("No valid class dates were found in the next 8 weeks");
+      const created = await store.createClassWithSlots({
+        teacherId,
+        studentId,
+        courseId,
+        durationMinutes: duration,
+        recurringRule,
+        slots,
+      });
+      res.status(201).json({
+        classId: created.classId,
+        generatedSlots: created.slots.length,
+        firstSlotUtc: created.slots[0]?.date_time_utc,
+        teacherTimezone: profile.timezone,
+      });
+    } catch (error) {
+      return requestError(res, error);
+    }
+  });
+
+  const scheduleRoute = (role) => async (req, res) => {
+    const profile = role === "teacher" || role === "student" ? await store.getProfile(req.user) : null;
+    const timezone = profile?.timezone || "UTC";
+    try {
+      const bounds = calendarBounds({ from: req.query.from, to: req.query.to, timezone });
+      const slots = await store.listSchedule({ role, userId: req.user.id, ...bounds });
+      res.json({ timezone, slots });
+    } catch (error) {
+      res.status(400).json({ error: error.message });
+    }
+  };
+  app.get("/admin/schedule", auth, requireRole("admin"), scheduleRoute("admin"));
+  app.get("/teacher/schedule", auth, requireRole("teacher"), scheduleRoute("teacher"));
+  app.get("/student/schedule", auth, requireRole("student"), scheduleRoute("student"));
+
+  app.post("/teacher/slots/:id/attendance", auth, requireRole("teacher"), async (req, res) => {
+    const attendanceRecord = req.body?.attendanceRecord;
+    if (!["present", "no_show"].includes(attendanceRecord)) {
+      return res.status(400).json({ error: "Attendance must be present or no_show" });
+    }
+    try {
+      const slot = await store.recordTeacherAttendance({
+        slotId: req.params.id,
+        teacherId: req.user.id,
+        attendanceRecord,
+        now: clock(),
+      });
+      return slot ? res.json({ slot }) : res.status(404).json({ error: "Schedule slot not found" });
+    } catch (error) {
+      return requestError(res, error);
+    }
+  });
+
+  app.put("/admin/slots/:id/attendance-override", auth, requireRole("admin"), async (req, res) => {
+    const { attendanceRecord, reason } = req.body || {};
+    if (!["present", "no_show", "excused"].includes(attendanceRecord)) {
+      return res.status(400).json({ error: "Attendance must be present, no_show, or excused" });
+    }
+    if (typeof reason !== "string" || !reason.trim()) return res.status(400).json({ error: "A reason is required for attendance overrides" });
+    try {
+      const slot = await store.overrideAttendance({
+        slotId: req.params.id,
+        actorId: req.user.id,
+        attendanceRecord,
+        reason: reason.trim().slice(0, 1000),
+        now: clock(),
+      });
+      return slot ? res.json({ slot }) : res.status(404).json({ error: "Schedule slot not found" });
+    } catch (error) {
+      return requestError(res, error);
+    }
+  });
+
+  app.put("/admin/teachers/:id/status", auth, requireRole("admin"), async (req, res) => {
+    const { status, reason } = req.body || {};
+    if (!["active", "suspended"].includes(status)) return res.status(400).json({ error: "Status must be active or suspended" });
+    if (typeof reason !== "string" || !reason.trim()) return res.status(400).json({ error: "A reason is required" });
+    const result = await store.setTeacherStatusAndReassignFuture({
+      teacherId: req.params.id,
+      actorId: req.user.id,
+      status,
+      reason: reason.trim().slice(0, 1000),
+      now: clock(),
+    });
+    return result ? res.json({ status: result.user.status, reassignedCount: result.reassignedCount }) : res.status(404).json({ error: "Teacher not found" });
+  });
+
+  app.get("/admin/audit-log", auth, requireRole("admin"), async (req, res) => {
+    const limit = Number(req.query.limit || 100);
+    res.json({ entries: await store.listAuditLog(limit) });
+  });
+
   const dashboards = {
     admin: "Admin dashboard",
     teacher: "Teacher dashboard",
@@ -243,8 +419,8 @@ function createApp({ store, seed = true } = {}) {
       res.json({
         role,
         title,
-        empty: true,
-        message: role === "admin" ? "Your academy overview will appear here." : `Your ${role} schedule and tools will appear here.`,
+        empty: false,
+        message: role === "admin" ? "Manage class schedules and review attendance." : role === "teacher" ? "View your calendar and record attendance." : "View your upcoming and past classes.",
         user: publicUser(req.user, await store.getProfile(req.user)),
       });
     });
