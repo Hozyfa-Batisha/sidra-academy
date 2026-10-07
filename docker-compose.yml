@@ -4,10 +4,11 @@ services:
       context: .
       dockerfile: server/Dockerfile
     environment:
-      NODE_ENV: production
+      NODE_ENV: ${NODE_ENV:-production}
       PORT: 4000
       DATABASE_URL: mysql://sidra:sidra_password@mysql:3306/sidra_academy
       REDIS_URL: redis://redis:6379
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-Admin12345!}
       JWT_SECRET: ${JWT_SECRET:-replace-this-in-production}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-replace-this-refresh-secret-in-production}
     depends_on:
@@ -17,6 +18,23 @@ services:
         condition: service_started
     expose:
       - "4000"
+
+  worker:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    command: ["node", "server/src/worker.js"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: mysql://sidra:sidra_password@mysql:3306/sidra_academy
+      REDIS_URL: redis://redis:6379
+      SMTP_URL: ${SMTP_URL:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
 
   frontend:
     build:

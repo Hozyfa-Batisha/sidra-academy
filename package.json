@@ -8,6 +8,7 @@
     "dev:server": "node --watch server/src/server.js",
     "dev:client": "npm --prefix client run dev",
     "start": "node server/src/server.js",
+    "start:worker": "node server/src/worker.js",
     "build": "npm --prefix client run build",
     "test": "node --test server/test/*.test.js",
     "test:coverage": "node --test --experimental-test-coverage server/test/*.test.js"
