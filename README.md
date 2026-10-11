@@ -25,11 +25,30 @@ Change the seed password and JWT secrets before using any deployed environment.
 
 ```bash
 cp .env.example .env
-# Set strong JWT secrets and a private seed-admin password in .env.
-docker compose up --build
+# Generate secrets locally; use the two different JWT values for JWT_SECRET and JWT_REFRESH_SECRET.
+openssl rand -hex 32
+openssl rand -hex 32
+openssl rand -hex 24
+openssl rand -hex 24
+# Put those outputs in .env for JWT_SECRET, JWT_REFRESH_SECRET,
+# MYSQL_PASSWORD, and MYSQL_ROOT_PASSWORD. Also set SEED_ADMIN_PASSWORD.
 ```
 
-The compose stack includes `app`, `worker`, `frontend`, `mysql`, `redis`, and `nginx`. The browser entrypoint is port 80. MySQL initializes the full schema on its first start. To upgrade an existing MySQL volume, run:
+`SIDRA_HOSTNAME` is the DuckDNS hostname routed to Sidra Academy. The Compose file applies Traefik labels to `nginx`, shares the external `proxy` network, sends HTTP requests to HTTPS, and asks the `letsencrypt` resolver for a certificate. Your Traefik instance must use the same Docker network and define the configured `web`, `websecure`, and `letsencrypt` names. DuckDNS must resolve to this server, with ports 80 and 443 reaching Traefik.
+
+If the external network does not already exist, create it once with `docker network create proxy` (or use the name configured by `TRAEFIK_NETWORK`). Then deploy:
+
+```bash
+docker compose up -d --build
+```
+
+The app is reached at `https://<SIDRA_HOSTNAME>`; this Compose stack does not publish the app’s HTTP port on the host. MySQL initializes the full schema on its first start. To upgrade an existing MySQL volume, run:
+
+```bash
+docker compose exec -T mysql sh -c 'mysql -usidra -p"$MYSQL_PASSWORD" sidra_academy' < server/migrations/003-scheduling.sql
+```
+
+Changing MySQL passwords in `.env` does not rotate credentials in a database volume that was already initialized; update the MySQL user password in that database before changing its Compose value.
 
 ```bash
 docker compose exec -T mysql sh -c 'mysql -usidra -p"$MYSQL_PASSWORD" sidra_academy' < server/migrations/003-scheduling.sql
@@ -56,12 +75,11 @@ MYSQL_TEST_URL='mysql://test_user:test_password@127.0.0.1:3306/sidra_academy_tes
 
 That integration test inserts two concurrent slots for the same teacher and instant, checks that the `(teacher_id, date_time_utc)` unique index rejects one, then verifies the attendance override audit row and watchdog state update. It cleans up its test rows afterward.
 
-### Browser walkthrough
+### Local browser walkthrough
 
-1. For local testing only, start the stack with `NODE_ENV=development docker compose up --build` and open `http://localhost`. Development mode displays newly generated temporary invite passwords in the Admin UI; never use it for a deployment. Sign in with `admin@sidra.academy` and the `SEED_ADMIN_PASSWORD` from `.env`.
-2. On the Admin dashboard, create one Teacher and one Student invite. Use the generated temporary passwords to sign in to each account and complete the forced password reset.
+1. Run `npm run dev` and open the Vite address (normally `http://localhost:5173`). This uses the in-memory store and is for local testing, not deployment.
+2. On the Admin dashboard, create one Teacher and one Student invite. Use their displayed temporary passwords to sign in and complete the forced password resets.
 3. Sign in as the Teacher. In **Teacher availability**, set a weekly window (for example Monday 09:00–12:00) and save it. The displayed IANA timezone is the time basis for those hours.
 4. Return to Admin. In **Admin scheduling**, select the Teacher, Student, and course. Choose a future Monday and a time/duration inside the teacher’s window, then create the class. The API materializes the next eight weeks and the Admin calendar displays both participant timezones.
 5. Sign in as the Student to verify the read-only calendar, then as the Teacher to verify the calendar and mark attendance when the class start time arrives. Teacher marking is enabled through 24 hours after the scheduled start.
-6. On Admin’s calendar, override a marked slot. A reason is required; verify the action in `GET /admin/audit-log` or the `audit_log` table.
-7. The worker runs the slot generator daily and checks for unattended slots hourly. Verify it is running with `docker compose logs -f worker`. A slot with no mark after 24 hours becomes `pending_review`; the unit and database integration tests cover this without waiting a day.
+6. On Admin’s calendar, override a marked slot. A reason is required; verify the action in `GET /admin/audit-log`. The background worker requires the MySQL/Redis Compose deployment; verify it with `docker compose logs -f worker`. An unmarked slot becomes `pending_review` after 24 hours; the tests cover this with an accelerated clock.
