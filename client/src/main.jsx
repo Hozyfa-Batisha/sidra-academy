@@ -6,8 +6,29 @@ const api = async (path, options = {}) => {
   const token = sessionStorage.getItem("sidra_access");
   const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
   if (token) headers.Authorization = `Bearer ${token}`;
-  const response = await fetch(`/api${path}`, { credentials: "include", ...options, headers });
-  const body = response.status === 204 ? null : await response.json();
+  let response;
+  try {
+    response = await fetch(`/api${path}`, { credentials: "include", ...options, headers });
+  } catch {
+    throw new Error("API unavailable: unable to reach the server");
+  }
+
+  if (response.status === 204) return null;
+
+  const contentType = response.headers.get("content-type") || "";
+  const responseText = await response.text();
+  let body = null;
+  if (contentType.includes("application/json")) {
+    try {
+      body = responseText ? JSON.parse(responseText) : null;
+    } catch {
+      throw new Error(`API unavailable: HTTP ${response.status}`);
+    }
+  }
+
+  if (!contentType.includes("application/json")) {
+    throw new Error(`API unavailable: HTTP ${response.status}`);
+  }
   if (!response.ok) throw new Error(body?.error || "Something went wrong");
   return body;
 };
